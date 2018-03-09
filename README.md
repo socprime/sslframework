@@ -1,5 +1,6 @@
 # SSL Framework
 Scripts description:
+
 ssl-framework-install.py - creates required folders, config files and domains list file for analysis
 ssl-framework-report.py - launches the .sh script, parses and analyzes scan result, transforms output to CEF/LEEF/log string, sends output via Syslog or writes to file.
 

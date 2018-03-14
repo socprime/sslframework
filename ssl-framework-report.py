@@ -218,6 +218,35 @@ def calc_valid_until_days(date_to):
     return diff
 
 
+def calc_rating(raw_result):
+
+    rate_list = []
+
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'expiration' and item['severity'] != 'OK'), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'issuer' and 'Self-signed' in item['finding']), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'trust' and item['severity'] != 'OK'), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'crl' and item['severity'] != 'INFO'), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'algorithm' and item['severity'] != 'OK'), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'key_size' and item['severity'] != 'INFO'), False)
+
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'keysize' and item['finding'] == 'Server keys 1024 bits'), False)
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'sslv3' and item['finding'] == 'SSLv3 is offered'), False)
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'rc4' and item['finding'] != 'RC4: not vulnerable'), False)
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'chain_of_trust' and item['severity'] != 'OK'), False)
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'std_STRONG' and item['severity'] != 'OK'), False)
+    next((rate_list.append('B') for item in raw_result if item['id'] == 'pfs' and item['severity'] != 'OK'), False)
+
+    next((rate_list.append('C') for item in raw_result if item['id'] == 'crime' and 'VULNERABLE' in item['finding']), False)
+    next((rate_list.append('C') for item in raw_result if item['id'] == 'tls1_2' and item['finding'] != 'TLSv1.2 is offered'), False)
+    next((rate_list.append('C') for item in raw_result if item['id'] == 'poodle_ssl' and item['finding'] != 'POODLE, SSL: not vulnerable'), False)
+
+    next((rate_list.append('T') for item in raw_result if item['id'] == 'issuer' and ('WoSign' in item['finding'] or 'StartCom' in item['finding'])), False)
+    next((rate_list.append('T') for item in raw_result if item['id'] == 'algorithm' and 'SHA1' in item['finding']), False)
+    rate_list.append('A')
+    rating = sorted(rate_list, reverse=True)[0]
+    return rating
+
+
 def get_report_data(host_data):
     rowsList = []
     rowDict = {}
@@ -241,7 +270,12 @@ def get_report_data(host_data):
     domain, ip = domain_ip.split('/')
     altnames = next((item['finding'] for item in host_data if item['id'] == 'san'), None).split(' ')
     altnames_count = altnames[3:].__len__()
+    calc_rating(host_data)
+    hostname = socket.gethostbyaddr(ip)[0]
+    rating = calc_rating(host_data)
 
+    rowDict['grade'] = rating
+    rowDict['serverName'] = hostname
     rowDict['domain'] = domain
     rowDict['ip'] = ip
     rowDict['commonNames'] = next((item['finding'] for item in host_data if item['id'] == 'cn'), None)
@@ -251,7 +285,7 @@ def get_report_data(host_data):
     rowDict['validUntilD'] = calc_valid_until_days(date_to)
     rowDict['key'] = key_sign
     rowDict['issuerLabel'] = next((item['finding'] for item in host_data if item['id'] == 'issuer'), None)
-    rowDict['revocationStatus'] = next((item['finding'] for item in host_data if item['id'] == 'crl'), None)
+    rowDict['revocationStatus'] = next((item['severity'] for item in host_data if item['id'] == 'crl'), None)
     rowDict['trusted'] = next((item['finding'] for item in host_data if item['id'] == 'trust'), None)
     rowDict['testTime'] = st
     rowDict['httpStatusCode'] = next((item['finding'] for item in host_data if item['id'] == 'HTTP_STATUS_CODE'), None)
@@ -274,6 +308,7 @@ mapDict = {
     'cef': {
         'domain':'fname={0}',
         'ip':'src={0}',
+        'grade': 'outcome={0}',
         'commonNames':'cs1={0} cs1Label=Common names',
         'altNames':'cs2={0} cs2Label=Alternative names count',
         'notBefore':'deviceCustomDate1={0} deviceCustomDate1Label=Valid from',

@@ -48,6 +48,7 @@ from datetime import datetime
 import json
 import urllib2
 import multiprocessing
+import io
 
 currentdir = os.path.dirname(os.path.abspath(sys.argv[0]))
 
@@ -163,13 +164,16 @@ def start_scan(domain):
         logger.info('Finished scan for [{0}]'.format(domain))
         host_list = []
         scan_result_list = []
-        data = json.load(open(output_file))
-        for host in data:
-            if host['id'] == 'service':
-                host_list.append(host['ip'])
-        for host in host_list:
-            value = search(host, data)
-            scan_result_list.append(value)
+        with io.open(output_file, 'r', encoding='unicode_escape') as f:
+            decoded_json = f.read().encode('utf-8').strip()
+            data = json.loads(decoded_json.replace('\\', '/'))
+            for host in data:
+                if host['id'] == 'service':
+                    host_list.append(host['ip'])
+            for host in host_list:
+                value = search(host, data)
+                scan_result_list.append(value)
+
         return scan_result_list
 
 
@@ -224,10 +228,10 @@ def calc_rating(raw_result):
 
     next((rate_list.append('F') for item in raw_result if item['id'] == 'expiration' and item['severity'] != 'OK'), False)
     next((rate_list.append('F') for item in raw_result if item['id'] == 'issuer' and 'Self-signed' in item['finding']), False)
-    next((rate_list.append('F') for item in raw_result if item['id'] == 'trust' and item['severity'] != 'OK'), False)
     next((rate_list.append('F') for item in raw_result if item['id'] == 'crl' and item['severity'] != 'INFO'), False)
     next((rate_list.append('F') for item in raw_result if item['id'] == 'algorithm' and item['severity'] != 'OK'), False)
     next((rate_list.append('F') for item in raw_result if item['id'] == 'key_size' and item['severity'] != 'INFO'), False)
+    next((rate_list.append('F') for item in raw_result if item['id'] == 'ROBOT' and 'VULNERABLE' in item['finding']), False)
 
     next((rate_list.append('B') for item in raw_result if item['id'] == 'keysize' and item['finding'] == 'Server keys 1024 bits'), False)
     next((rate_list.append('B') for item in raw_result if item['id'] == 'sslv3' and item['finding'] == 'SSLv3 is offered'), False)
@@ -242,6 +246,8 @@ def calc_rating(raw_result):
 
     next((rate_list.append('T') for item in raw_result if item['id'] == 'issuer' and ('WoSign' in item['finding'] or 'StartCom' in item['finding'])), False)
     next((rate_list.append('T') for item in raw_result if item['id'] == 'algorithm' and 'SHA1' in item['finding']), False)
+    next((rate_list.append('T') for item in raw_result if item['id'] == 'trust' and item['severity'] != 'OK'), False)
+
     rate_list.append('A')
     rating = sorted(rate_list, reverse=True)[0]
     return rating
@@ -271,7 +277,10 @@ def get_report_data(host_data):
     altnames = next((item['finding'] for item in host_data if item['id'] == 'san'), None).split(' ')
     altnames_count = altnames[3:].__len__()
     calc_rating(host_data)
-    hostname = socket.gethostbyaddr(ip)[0]
+    try:
+        hostname = socket.gethostbyaddr(ip)[0]
+    except:
+        hostname = 'Could not resolve hostname'
     rating = calc_rating(host_data)
 
     rowDict['grade'] = rating
@@ -544,7 +553,6 @@ if __name__ == '__main__':
                 if result:
                     for row in result:
                         rList = get_report_data(row)
-                        logger.info(rList)
                         rowsList.extend(rList)
                 else:
                     continue
